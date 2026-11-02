@@ -42,7 +42,9 @@ import com.leslie.tot.utils.TemiRepository
 import com.leslie.tot.utils.SignClassifier
 import com.leslie.tot.utils.SignOverlay
 import com.leslie.tot.utils.SignRecognizer
+import com.leslie.tot.utils.SignState
 import com.leslie.tot.utils.SignStatus
+import com.leslie.tot.utils.SignWordRecognizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
@@ -67,9 +69,16 @@ fun SignLanguageScreen(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     val owner = remember(context) { context.findLifecycleOwner() }
 
-    val state by SignRecognizer.state.collectAsState()
-    val speak by SignRecognizer.speakEnabled.collectAsState()
+    val signMode by AppSettings.signMode.flow.collectAsState()
+    val wordMode = signMode == 1
+    val letterState by SignRecognizer.state.collectAsState()
+    val wordState by SignWordRecognizer.state.collectAsState()
+    val state: SignState = if (wordMode) wordState else letterState
+    val letterSpeak by SignRecognizer.speakEnabled.collectAsState()
+    val wordSpeak by SignWordRecognizer.speakEnabled.collectAsState()
+    val speak = if (wordMode) wordSpeak else letterSpeak
     val flip by SignRecognizer.flipInput.collectAsState()
+    val mirrorWords by SignWordRecognizer.mirror.collectAsState()
     val inputMode by AppSettings.signInputMode.flow.collectAsState()
     val simulate by AppSettings.simulateRobot.flow.collectAsState()
 
@@ -86,13 +95,24 @@ fun SignLanguageScreen(onNavigate: (String) -> Unit) {
         if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    // ---- models are loaded when the tab opens and freed when it closes ----
-    LaunchedEffect(Unit) {
+    // ---- models are loaded when the tab opens (or the mode changes) and freed when it closes ----
+    LaunchedEffect(wordMode) {
         val appContext = context.applicationContext
-        withContext(Dispatchers.Default) { SignRecognizer.prepare(appContext) }
+        withContext(Dispatchers.Default) {
+            if (wordMode) {
+                SignRecognizer.stop()
+                SignWordRecognizer.prepare(appContext)
+            } else {
+                SignWordRecognizer.stop()
+                SignRecognizer.prepare(appContext)
+            }
+        }
     }
     DisposableEffect(Unit) {
-        onDispose { SignRecognizer.stop() }
+        onDispose {
+            SignRecognizer.stop()
+            SignWordRecognizer.stop()
+        }
     }
 
     Column(
@@ -101,7 +121,7 @@ fun SignLanguageScreen(onNavigate: (String) -> Unit) {
             .background(Color(0xFF020617))
     ) {
 
-        TopBar(title = "temi-of-thinh (TOT)", subtitle = "Hand reading: ASL fingerspelling")
+        TopBar(title = "temi-of-thinh (TOT)", subtitle = if (wordMode) "Hand reading: ASL words" else "Hand reading: ASL fingerspelling")
 
         Row(modifier = Modifier.fillMaxSize()) {
 
@@ -173,25 +193,37 @@ fun SignLanguageScreen(onNavigate: (String) -> Unit) {
                         .padding(14.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    TogglePill(label = if (speak) "Speak: ON" else "Speak: OFF", on = speak) {
-                        SignRecognizer.speakEnabled.value = !speak
+                    TogglePill(label = if (wordMode) "Mode: Words" else "Mode: Letters", on = wordMode) {
+                        AppSettings.signMode.set(if (wordMode) 0 else 1)
                     }
-                    TogglePill(label = "Flip hand", on = flip) {
-                        SignRecognizer.flipInput.value = !flip
+                    TogglePill(label = if (speak) "Speak: ON" else "Speak: OFF", on = speak) {
+                        if (wordMode) SignWordRecognizer.speakEnabled.value = !speak
+                        else SignRecognizer.speakEnabled.value = !speak
+                    }
+                    if (wordMode) {
+                        TogglePill(label = "Mirror", on = mirrorWords) {
+                            SignWordRecognizer.mirror.value = !mirrorWords
+                        }
+                    } else {
+                        TogglePill(label = "Flip hand", on = flip) {
+                            SignRecognizer.flipInput.value = !flip
+                        }
                     }
                     TogglePill(label = if (simulate) "Simulated robot: ON" else "Simulated robot: OFF", on = simulate) {
                         AppSettings.simulateRobot.set(!simulate)
                         TemiRepository.applyMode()
                     }
-                    TogglePill(
-                        label = when (inputMode) {
-                            SignClassifier.INPUT_MINUS_ONE_ONE -> "Input -1..1"
-                            SignClassifier.INPUT_RAW_255 -> "Input 0..255"
-                            else -> "Input 0..1"
-                        },
-                        on = false
-                    ) {
-                        AppSettings.signInputMode.set((inputMode + 1) % 3)
+                    if (!wordMode) {
+                        TogglePill(
+                            label = when (inputMode) {
+                                SignClassifier.INPUT_MINUS_ONE_ONE -> "Input -1..1"
+                                SignClassifier.INPUT_RAW_255 -> "Input 0..255"
+                                else -> "Input 0..1"
+                            },
+                            on = false
+                        ) {
+                            AppSettings.signInputMode.set((inputMode + 1) % 3)
+                        }
                     }
                 }
 
@@ -201,7 +233,7 @@ fun SignLanguageScreen(onNavigate: (String) -> Unit) {
                     confidence = state.confidence,
                     message = state.message,
                     guesses = state.guesses.joinToString("  \u00b7  ") {
-                        "${SignRecognizer.pretty(it.label)} ${(it.confidence * 100).toInt()}%"
+                        "${if (wordMode) it.label else SignRecognizer.pretty(it.label)} ${(it.confidence * 100).toInt()}%"
                     },
                     history = state.history,
                     stats = if (state.fps > 0) "${state.fps} fps \u00b7 ${state.inferenceMs} ms" else "",
@@ -332,7 +364,12 @@ private fun SignCameraView(
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                     .build()
-                ia.setAnalyzer(analysisExecutor, SignRecognizer.createAnalyzer())
+                // One analyzer for both modes: the screen's mode decides which recogniser gets each frame.
+                val letterAnalyzer = SignRecognizer.createAnalyzer()
+                val wordAnalyzer = SignWordRecognizer.createAnalyzer()
+                ia.setAnalyzer(analysisExecutor, ImageAnalysis.Analyzer { image ->
+                    if (AppSettings.signMode.value == 1) wordAnalyzer.analyze(image) else letterAnalyzer.analyze(image)
+                })
                 analysis = ia
 
                 p.unbindAll()

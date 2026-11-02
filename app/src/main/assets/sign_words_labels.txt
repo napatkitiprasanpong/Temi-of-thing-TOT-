@@ -1,0 +1,35 @@
+hello	hello
+bye	bye
+thankyou	thank you
+please	please
+yes	yes
+no	no
+fine	fine
+happy	happy
+mad	mad
+bad	bad
+sick	I am sick
+owie	it hurts
+hungry	I am hungry
+thirsty	I am thirsty
+sleepy	I am sleepy
+water	water
+drink	drink
+food	food
+milk	milk
+potty	toilet
+home	home
+go	go
+stay	stay
+mom	mom
+dad	dad
+give	give
+like	like
+where	where
+who	who
+why	why
+now	now
+later	later
+finish	finish
+clean	clean
+hot	hot

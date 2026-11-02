@@ -77,9 +77,10 @@ dependencies {
     // ONNX Runtime: runs the MoveNet pose model (assets/movenet_lightning.onnx)
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.3")
 
-    // Hand Reading screen: TensorFlow Lite runs assets/asl_alphabet.tflite (ASL fingerspelling classifier).
+    // Hand Reading screen: TensorFlow Lite runs asl_alphabet.tflite (letters), hand_landmark.tflite and sign_words.tflite (words).
+    // 2.17.0 or newer: sign_words.tflite records 2.17.0 as its minimum runtime (it uses FULLY_CONNECTED version 12).
     // The hand is located with the MoveNet pose model above. No MediaPipe, so Android 6 (API 23) works.
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

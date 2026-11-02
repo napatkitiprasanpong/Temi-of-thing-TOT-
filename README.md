@@ -20,7 +20,7 @@ It was split out of the former *IAQ & IEQ Monitoring* app (its **Camera & Depth*
 * temi robot (V2: Android 6, or V3: Android 11), or any Android tablet or phone with the **Simulated robot** switch on
 * Android Studio (recent version), JDK 17+, Android SDK 36
 * App: `minSdk 23`, `targetSdk 36`, application id `com.leslie.tot`
-* Dependencies (`app/build.gradle.kts`): `com.robotemi:sdk:1.138.0`, ONNX Runtime `1.17.3` (MoveNet pose model), TensorFlow Lite `2.16.1` (Hand Reading), CameraX `1.4.2`
+* Dependencies (`app/build.gradle.kts`): `com.robotemi:sdk:1.138.0`, ONNX Runtime `1.17.3` (MoveNet pose model), TensorFlow Lite `2.17.0` (Hand Reading), CameraX `1.4.2`
 
 ## Build and install
 
@@ -90,7 +90,32 @@ camera frame -> MoveNet pose (ONNX Runtime) -> wrist + elbow of the raised hand
 
 Code: `screens/SignLanguageScreen.kt` (UI), `utils/SignRecognizer.kt` (hand crop, letters to words, speaking), `utils/SignClassifier.kt` (TensorFlow Lite), `utils/PoseDetector.kt` (MoveNet).
 
-### Model files
+
+### Words mode (whole signed words)
+
+The Hand Reading screen has a **Mode: Words / Letters** pill (top right). **Words** (the default) recognises about 35 whole ASL words (hello, thank you, I am hungry, toilet, ...) and has temi say them. It also runs on Android 6.
+
+1. Raise a hand and sign the word. Lower both hands when you are done (about 0.7 s): the word is recognised and spoken.
+2. If the model is less than 55% sure, temi stays quiet and the caption says so. Sign it again.
+3. **Mirror** (top right) swaps left and right. Switch it on if signs that look right are never recognised: it means the training videos and the camera disagree about which hand is the "left" one.
+
+```
+camera frame -> MoveNet (shoulders, elbows, wrists)
+             -> square along each raised forearm, turned upright -> hand_landmark.tflite (21 points per hand)
+             -> one frame = 2 hands + 6 body points -> frames of the whole sign
+             -> SignFeatures (same maths as features.py) -> 32 x 98 numbers -> sign_words.tflite -> word
+             -> caption + temi.speak()
+```
+
+Code: `utils/SignWordRecognizer.kt` (frames, start and end of a sign, speaking), `utils/HandLandmarkExtractor.kt`, `utils/SignFeatures.kt`, `utils/SignWordClassifier.kt`.
+
+**`SignFeatures.kt` must stay identical to `features.py`.** `app/src/test/.../SignFeaturesTest.kt` checks it against `features_golden.txt`, written by the Python code. If you change `features.py`, retrain the model and regenerate the golden file.
+
+Assets: `sign_words.tflite`, `sign_words_labels.txt` (`gloss<TAB>what temi says`, in the model's output order), `hand_landmark.tflite`.
+
+Limits: the model was trained on the Kaggle ASL Signs videos (people signing to a phone), not on temi's camera. Expect lower accuracy: stand 1-2 m away, face the camera, light on your face, upper body in view, sign at a natural speed. The hand finder is the forearm square from MoveNet, not MediaPipe's palm detector, so a hand pointing straight at the camera is found less reliably.
+
+### Model files (letters)
 
 `app/src/main/assets/` must contain:
 

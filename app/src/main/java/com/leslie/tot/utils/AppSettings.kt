@@ -46,6 +46,8 @@ object AppSettings {
     // ---- Hand Reading screen ----
     /** How the alphabet model expects pixel values: 0 = 0..1, 1 = -1..1, 2 = 0..255 (see SignClassifier). */
     val signInputMode = Setting("sign_input_mode", 0)
+    /** What the Hand Reading screen recognises: 0 = fingerspelling letters, 1 = whole signed words. */
+    val signMode = Setting("sign_mode", 1)
 
     // ---- raised hand -> temi follows the person ----
     val raiseHandFollowEnabled = Setting("raise_hand_follow_enabled", false)
@@ -71,7 +73,7 @@ object AppSettings {
         listOf(
             simulateRobot, raiseHandFollowEnabled, raiseHandFollowSeconds, findPersonEnabled,
             approachEnabled, approachThenFollow, approachStopDistanceCm, approachInvertTurn,
-            approachFocalPermille, signInputMode
+            approachFocalPermille, signInputMode, signMode
         ).forEach { it.load(p) }
     }
 
